@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>HUD</title>
+<style>
+  :root {
+    --white: 255,255,255;
+    --dim: 255,255,255;
+    --bg: 0,0,0;
+  }
+  html,body { margin:0; padding:0; background:transparent; overflow:hidden; }
+  #wrap {
+    position: fixed;
+    left: 0; top: 0; width: 100vw; height: 100vh;
+    pointer-events: none; display:none;
+  }
+  /* anchor */
+  #box {
+    position:absolute;
+    transform-origin: left top;
+    /* transform wird per JS gesetzt (scale + translate nach ax/ay) */
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Noto Sans", "Helvetica Neue", "Apple Color Emoji", "Segoe UI Emoji";
+    color: rgba(var(--white), 0.95);
+    text-shadow: 0 1px 2px rgba(0,0,0,.8);
+  }
+
+  /* Speed big */
+  #speed {
+    font-weight: 800;
+    font-size: 72px;
+    line-height: .9;
+    letter-spacing: 1px;
+    filter: drop-shadow(0 2px 2px rgba(0,0,0,.55));
+  }
+  #unit {
+    display:block;
+    font-weight: 700;
+    font-size: 20px;
+    margin-top: -2px;
+    opacity: .9;
+  }
+
+  /* Row of small icons */
+  #row {
+    margin-top: 6px;
+    display: flex;
+    gap: 16px;
+    align-items: center;
+  }
+
+  /* Lock icon in circular badge */
+  .badge {
+    position: relative;
+    width: 54px; height: 54px;
+    border-radius: 50%;
+    box-shadow: 0 0 0 3px rgba(var(--white), .9) inset, 0 1px 4px rgba(0,0,0,.5);
+    display:grid; place-items:center;
+  }
+  .padlock {
+    width: 28px; height: 28px;
+  }
+  .padlock svg { width:100%; height:100%; display:block; }
+  .unlocked .u-closed { display:none; }
+  .locked   .u-open   { display:none; }
+
+  /* Fuel ring + text */
+  .fuel {
+    position: relative;
+    display:flex; align-items:center; gap:10px;
+  }
+  .ring {
+    position: relative;
+    width: 54px; height: 54px;
+  }
+  .ring svg { width:100%; height:100%; transform: rotate(-90deg); }
+  .ring .track { stroke: rgba(var(--white), .25); stroke-width: 6; fill: none; }
+  .ring .bar   { stroke: rgba(var(--white), .95); stroke-width: 6; fill: none; stroke-linecap: round; }
+  .fuelText {
+    font-weight:700; font-size:18px; min-width: 42px;
+  }
+  .low { color: #ff6161; } /* rot bei wenig Sprit */
+
+</style>
+</head>
+<body>
+  <div id="wrap">
+    <div id="box">
+      <div id="speed">0<span id="unit">KM/H</span></div>
+
+      <div id="row">
+        <div id="lockBadge" class="badge locked">
+          <div class="padlock">
+            <!-- closed -->
+            <svg class="u-closed" viewBox="0 0 24 24" aria-hidden="true">
+              <path fill="currentColor" d="M17 9h-1V7a4 4 0 0 0-8 0v2H7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2Zm-7-2a2 2 0 1 1 4 0v2h-4V7Zm7 11H7v-7h10v7Z"/>
+            </svg>
+            <!-- open -->
+            <svg class="u-open" viewBox="0 0 24 24" aria-hidden="true">
+              <path fill="currentColor" d="M17 9h-4V7a4 4 0 1 0-8 0h2a2 2 0 1 1 4 0v2H7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2Zm0 9H7v-7h10v7Z"/>
+            </svg>
+          </div>
+        </div>
+
+        <div class="fuel">
+          <div class="ring">
+            <svg viewBox="0 0 36 36">
+              <circle class="track" cx="18" cy="18" r="15"></circle>
+              <circle class="bar"   cx="18" cy="18" r="15" stroke-dasharray="0 100"></circle>
+            </svg>
+          </div>
+          <div id="fuelText" class="fuelText">100%</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const wrap = document.getElementById('wrap');
+  const box  = document.getElementById('box');
+  const speedEl = document.getElementById('speed');
+  const unitEl  = document.getElementById('unit');
+  const lockBadge = document.getElementById('lockBadge');
+  const bar = document.querySelector('.bar');
+  const fuelText = document.getElementById('fuelText');
+
+  // smooth number transition
+  let lastSpeed = 0;
+
+  function setTransform(ax, ay, scale){
+    box.style.transform = `scale(${scale}) translate(${ax*100}vw, ${ay*100}vh)`;
+  }
+
+  function setFuel(pct){
+    pct = Math.max(0, Math.min(100, pct));
+    const circ = 2 * Math.PI * 15; // r=15
+    const dash = (pct/100) * circ;
+    bar.setAttribute('stroke-dasharray', `${dash} ${circ-dash}`);
+    fuelText.textContent = `${Math.round(pct)}%`;
+    fuelText.classList.toggle('low', pct <= 15);
+  }
+
+  function setLock(locked){
+    lockBadge.classList.toggle('locked',  locked);
+    lockBadge.classList.toggle('unlocked', !locked);
+  }
+
+  window.addEventListener('message', (e) => {
+    const d = e.data;
+    if(!d || !d.type) return;
+
+    if(d.type === 'toggle'){
+      wrap.style.display = d.show ? 'block' : 'none';
+      return;
+    }
+    if(d.type === 'update'){
+      // position & scale
+      setTransform(d.ax ?? 0.88, d.ay ?? 0.78, d.scale ?? 1.0);
+
+      // speed
+      const spd = Math.max(0, Math.min(999, d.speed|0));
+      lastSpeed = spd;
+      speedEl.firstChild.nodeValue = spd.toString();
+
+      // unit (immer KM/H, aber falls du MPH willst, hier switchen)
+      unitEl.textContent = 'KM/H';
+
+      // fuel + lock
+      setFuel(d.fuel ?? 0);
+      setLock(!!d.locked);
+    }
+    if(d.type === 'fuelOnly'){
+      setFuel(d.fuel ?? 0);
+    }
+  });
+</script>
+</body>
+</html>
